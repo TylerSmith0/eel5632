@@ -10,6 +10,9 @@ def hello_world():
     name = os.environ.get("NAME", "World")
     return "Hello {}!".format(name)
     
+@app.route("/floop")
+def floopy():
+    return "Floopy doopy"
 
 
 if __name__ == "__main__":
