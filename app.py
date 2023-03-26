@@ -53,7 +53,8 @@ async def sensor_data(id=None):
         # First, we authenticate
         for key in data:
             if key == "key":
-                flag = await attempt_auth()
+                # flag = await attempt_auth()
+                print("true")
         # If we pass auth, then update values
 
         # Finally, return true
