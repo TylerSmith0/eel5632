@@ -4,16 +4,33 @@ import sqlite3
 
 from flask import Flask, render_template, request, json
 from models import Sensor
+# Import the Firebase service
+import firebase_admin
+from firebase_admin import auth
+from firebase_admin import credentials
+from firebase_admin import db
+from dotenv import load_dotenv
 
 app = Flask(__name__)
+
+load_dotenv()
+
+cred = credentials.Certificate(os.environ.get("FIREBASE_AUTH_LOC"))
+fb = firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://eel5632-hedgehogs-default-rtdb.firebaseio.com/'
+})
 
 ## Init SQLite from SQL DB
 @app.before_first_request
 async def startup():
+    # fb = firebase.FirebaseApplication('https://eel5632-hedgehogs-default-rtdb.firebaseio.com/', None)
+
     with sqlite3.connect("database.db") as con:
         cur = con.cursor()
         with open('schema.sql') as f:
             cur.executescript(f.read())
+
+    
 
 @app.route("/")
 async def home():
@@ -21,6 +38,8 @@ async def home():
     
 @app.route("/team")
 async def team():
+    # res = fb.get('/team', None)
+    # print(res)
     return render_template('team.html')
 
 @app.route("/data")
@@ -55,7 +74,14 @@ async def sensor_data(id=None):
             if key == "key":
                 # flag = await attempt_auth()
                 print("true")
+
+
         # If we pass auth, then update values
+        # Get a database reference to our posts
+        ref = db.reference('sensors')
+
+# Read the data at the posts reference (this is a blocking operation)
+        return ref.get()
 
         # Finally, return true
         return data
