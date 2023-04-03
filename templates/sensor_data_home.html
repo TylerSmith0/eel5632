@@ -1,0 +1,29 @@
+<html>
+    <head>
+        
+    </head>
+
+    <body>
+        <h2>Sensor Data</h2>
+        <br />
+
+        <p>Below is a list (with hyperlinks) of all of the sensors currently in the
+            Real-Time Database.
+        </p>
+
+        <ul>
+              {% for key, value in sensors.items() %}
+                <li><a href="/data/view/{{key}}">{{key}}</a></li>
+              {% endfor %}
+        </ul>
+
+        <script>   
+            function refresh(){
+                window.location.reload();
+            }     
+            document.addEventListener("DOMContentLoaded", function(event){
+                setInterval(refresh, 20000);
+            });
+        </script>
+    </body>
+</html>

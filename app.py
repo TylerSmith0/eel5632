@@ -3,6 +3,7 @@ import os
 import asyncio
 import sqlite3
 import util
+import logging
 from dotenv import load_dotenv
 
 ## Flask imports
@@ -18,12 +19,19 @@ from firebase_admin import db
 from models import Sensor
 
 ###################################################################
+load_dotenv()
+logging.basicConfig(filename=os.environ.get("LOGGING_FILE_LOC_APP"),
+                    filemode='a',
+                    level=logging.INFO,
+                    format='%(asctime)s  |  %(name)s - %(levelname)s - %(message)s',
+                    datefmt='%d-%b-%y %H:%M:%S')
 
 app = Flask(__name__)
 
 ###################################################################
-## Load in configuration files and environment variables.
-load_dotenv()
+## Load in configuration files and environment variables and set 
+## up logging for the app.
+
 cred = credentials.Certificate(os.environ.get("FIREBASE_AUTH_LOC"))
 fb = firebase_admin.initialize_app(cred, {
     'databaseURL': os.environ.get("FIREBASE_URL"),
@@ -39,10 +47,13 @@ async def startup():
         sensors being added to the system, and attempts to mitigate a
         malicious node spoofing the parking sensor's data."""
 
+    logging.info("Starting up app...")
+
     with sqlite3.connect("database.db") as con:
         cur = con.cursor()
         with open('schema.sql') as f:
             cur.executescript(f.read())
+            logging.info("Returning from SQL Schema setup.")
 
     
 ###################################################################
@@ -70,31 +81,55 @@ async def data():
     return render_template('data.html')
 
 ###################################################################
+## Data View Page Home
+@app.route("/data/view")
+@app.route("/data/view/")
+async def sensor_data_view_home():
+    sensors = db.reference('sensors').get()
+    
+    if sensors is None:
+        sensors = {}
+    
+    # try:
+    #     data = {}
+    #     for sensor in sensors:
+    #         data[sensor] = request.path + f'/{sensor}'
+    # except Exception as e:
+    #     logging.warning("APP > SENSOR_DATA_VIEW_HOME | Error" +
+    #         " processing sensors from returned structure.")
+
+    return render_template('sensor_data_home.html', sensors=sensors)
+
+###################################################################
 ## Data View Page (Human-readable version)
 @app.route("/data/view/<id>", methods=["GET"])
-def sensor_data_view(id=None):
+async def sensor_data_view(id=None):
     """Returns the Human-Readable webpage in HTML for a sensor from
         a given sensor id."""
 
-    ## TO DO: Get the Sensor() object and return its information
+    ## Check if sensor exists:
+    data = db.reference(f"sensors/{id}").get()
+    if data is None:
+        data = {'error': 'Sensor ID does not exist in RTDB.'}
+        return render_template('sensor_data_nonexist.html')
 
-    sensor = {
-        'id': id,
-        'name': "My Name"
-    }
-    return render_template('sensor_data.html', sensor=sensor)
+    return render_template('sensor_data.html', sensor=data)
 
 
 ## Returns JSON-only object, intended mainly for mobile app.
 @app.route("/data/<id>", methods=["GET", "POST"])
 async def sensor_data(id=None):
     if id is None:
-        return {}
+        logging.warning("")
+        return {'error': 'No ID provided.'}
 
     if request.method == "GET":
 
         ## Return the sensor data from the given ID
-        return id
+        data = db.reference(f"sensors/{id}").get()
+        if data is None:
+            data = {'error': 'Sensor ID does not exist in RTDB.'}
+        return data
 
     elif request.method == "POST":
         # Get values from POST body:
@@ -105,25 +140,42 @@ async def sensor_data(id=None):
             try:
                 data = json.loads(request.data)
             except Exception as e:
+                logging.warning("APP > SENSOR_DATA | Invalid data type " + 
+                    "provided on JSON read.")
                 data = {"error": "Invalid data type provided. Please ensure' + \
                         you're setting data type in body to JSON."}
+                return data
         
         # First, we authenticate
         for key in data:
             if key == "key":
-                # flag = await attempt_auth()
-                print("true")
 
+                ## Attempt to create ID (will error out otherwise):
+                if not (await util.exists(id, db)):
+                    if (await util.verify_parameters(data)):
+                        await util.add_sensor_to_rtdb(data, db)
+                    else:
+                        return {'error': 'Invalid parameters provided in JSON object.'}
 
-        # If we pass auth, then update values
-        # Get a database reference to our posts
-        ref = db.reference('sensors')
+                ## Confirm auth
+                if (await util.auth_id(id, data[key])):
 
-# Read the data at the posts reference (this is a blocking operation)
-        return ref.get()
+                    ## Remove auth key from data:
+                    vals = {}
+                    for i in data:
+                        if i != "key":
+                            vals[i] = data[i]
+                        
+                    ## Update DB value
+                    db.reference(f'sensors/{id}').set(vals)
+                    vals['updated'] = 'true'
+                    return vals
 
-        # Finally, return true
-        return data
+        # Read the data at the posts reference (this is a blocking operation)
+        return {'error': 'No Authentication key was provided to update the sensor values.'}
+
+    ## Otherwise wrong HTTP request
+    return {'error': 'Invalid HTTP Request -- must use either GET or POST.'}
 
 
 ###################################################################
@@ -137,7 +189,7 @@ async def init(id=None):
     
     ## Check request type and process input:
     if request.method == "POST":
-        # Get values from POST body:
+        ## Get values from POST body:
         content_type = request.headers.get('Content-Type')
         if (content_type == 'application/json'):
             data = request.get_json()
@@ -147,10 +199,24 @@ async def init(id=None):
             except Exception as e:
                 print(f"{e} || Exception while processing json from request.data")
                 return {}
+
+        ## Confirm that values from POST body are valid:
         _err, s = await util.verify_parameters(data)
         if _err:
-            ## Error out and return an empty JSON object
-            return {}
+            ## Error out and return error msg in JSON object
+            return s
+
+        ## Create Sensor object in RTDB and add to keys
+        _err, s = await util.add_sensor_to_rtdb(s, db)
+
+        ## If error occurs, return the error message as a JSON obj
+        if _err:
+            logging.info(f"APP > {s['error']}")
+            return s
+
+        ## Otherwise, return the newly created object
+        s["url"] = os.environ.get("FIREBASE_URL")+f"sensors/{s['id']}"
+        return s
 
 
 if __name__ == "__main__":

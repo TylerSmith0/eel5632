@@ -1,0 +1,3 @@
+This folder will retain LOG file in Google Cloud run.
+
+Each file should have a logger initialized and write data to this file.
