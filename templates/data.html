@@ -43,5 +43,12 @@
             of the JSON object -- the API will scan the JSON data for the "key" keyword and
             authenticate with the provided ID and Key to the authentication service.
         </p>
+        <p>You do not need to provide all of the required fields if the sensor ID already exists --
+            the API will append whatever is currently existing to your updated data JSON object.
+        </p>
+        <p>You can also change the spot that a sensor is assigned to by adding a different spot ID
+            to the "spot" tag in the JSON object. I don't know why you would, but I added it, and 
+            that's pretty neat-o, as the kids say these days.
+        </p>
     </body>
 </html>

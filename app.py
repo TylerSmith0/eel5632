@@ -4,6 +4,8 @@ import asyncio
 import sqlite3
 import util
 import logging
+import urllib.parse
+import urllib.request
 from dotenv import load_dotenv
 
 ## Flask imports
@@ -159,9 +161,25 @@ async def sensor_data(id=None):
 
                 ## Confirm authentication
                 if (await util.auth_id(id, data[key])):
+                    
+                    ## Get current item:
+                    currData = db.reference(f"sensors/{id}").get()
+
+                    ## Compare current spot to new spot, if exists:
+                    if "spot" in data:
+                        if data["spot"] != currData["spot"]:
+                            resp = await update_sensor_spot(data, id, db)
+                            if "error" in resp:
+                                return resp["error"]
+
                     ## Remove auth key from data
                     del data["key"]
-                        
+
+                    ## Add to existing object, appending whatever is missing:
+                    for i in currData:
+                        if i not in data:
+                            data[i] = currData[i]
+
                     ## Update DB value
                     db.reference(f'sensors/{id}').set(data)
                     data['updated'] = 'true'
@@ -215,59 +233,61 @@ async def sensor_spot(id=None):
                 data = {"error": "Invalid data type provided. Please ensure" + \
                         "you're setting data type in body to JSON."}
                 return data
-
-        ## Confirm sensor ID exists
-        if not (await util.exists("sensors", id, db)):
-            return {"error": "Sensor ID does not exist."}
-
-        ## Check for Auth Key in obj:
-        if "key" not in data:
-            return {"error": "No auth key provided in JSON object."}
-
-        ## Confirm auth key:
-        if not (await util.auth_id(id, data["key"])):
-            return {"error": "Improper authentication key was provided for given sensor."}
-
-        ## Confirm spot is provided in data:
-        if "spot" not in data:
-            return {"error": "No spot provided in JSON object."}
-       
-        spot = data["spot"]
-        _err = False
-        ## Confirm spot exists, if not make one
-        if not (await util.exists("spots", spot, db)):
-            _err, spot = await util.add_spot_to_rtdb(spot, db)
-        else:
-            spot = db.reference(f"spots/{spot}").get()
-
-        if _err:
-            return {"error": "Error getting spot data. Please confirm it exists in RTDB."}
         
-        ## Add sensor ID to sensors object in spot
-        spot['sensors'][id] = id
-
-        ## Reference sensor object:
-        sensor = db.reference(f"sensors/{id}").get()
-
-        ## Unlink current spot, if applicable
-        oldSpot = sensor["spot"]
-        if (await util.exists("spots", oldSpot, db)):
-            oldSpotObj = db.reference(f"spots/{oldSpot}").get()
-            del oldSpotObj["sensors"][id]
-            db.reference(f"spots/{oldSpot}").set(oldSpotObj)
-
-        sensor["spot"] = spot["id"] # Set spot id to sensor's spot parameter
-
-        ## remove auth key if exists
-        if "key" in sensor:
-            del sensor["key"]
-
-        ## setting:
-        db.reference(f"sensors/{id}").set(sensor)
-        db.reference(f"spots/{spot['id']}").set(spot)
-        return sensor
+        return await update_sensor_spot(data, id, db)
 
 
+async def update_sensor_spot(data, id, db):
+    ## Confirm sensor ID exists
+    if not (await util.exists("sensors", id, db)):
+        return {"error": "Sensor ID does not exist."}
+
+    ## Check for Auth Key in obj:
+    if "key" not in data:
+        return {"error": "No auth key provided in JSON object."}
+
+    ## Confirm auth key:
+    if not (await util.auth_id(id, data["key"])):
+        return {"error": "Improper authentication key was provided for given sensor."}
+
+    ## Confirm spot is provided in data:
+    if "spot" not in data:
+        return {"error": "No spot provided in JSON object."}
+    
+    spot = data["spot"]
+    _err = False
+    ## Confirm spot exists, if not make one
+    if not (await util.exists("spots", spot, db)):
+        _err, spot = await util.add_spot_to_rtdb(spot, db)
+    else:
+        spot = db.reference(f"spots/{spot}").get()
+
+    if _err:
+        return {"error": "Error getting spot data. Please confirm it exists in RTDB."}
+    
+    ## Add sensor ID to sensors object in spot
+    spot['sensors'][id] = id
+
+    ## Reference sensor object:
+    sensor = db.reference(f"sensors/{id}").get()
+
+    ## Unlink current spot, if applicable
+    oldSpot = sensor["spot"]
+    if (await util.exists("spots", oldSpot, db)):
+        oldSpotObj = db.reference(f"spots/{oldSpot}").get()
+        del oldSpotObj["sensors"][id]
+        db.reference(f"spots/{oldSpot}").set(oldSpotObj)
+
+    sensor["spot"] = spot["id"] # Set spot id to sensor's spot parameter
+
+    ## remove auth key if exists
+    if "key" in sensor:
+        del sensor["key"]
+
+    ## setting:
+    db.reference(f"sensors/{id}").set(sensor)
+    db.reference(f"spots/{spot['id']}").set(spot)
+    return sensor
 
 
 ###################################################################

@@ -42,7 +42,7 @@ async def add_sensor_to_rtdb(sensor, db):
         db.reference(f'sensors/{sensor["id"]}').set(sensor)
         logging.info(f'UTIL > Added {sensor["id"]} to RTDB.')
 
-        ## TO DO: Add Auth key to data structure
+        ## TODO: Add Auth key to data structure
         
         return (_err, db.reference(f'sensors/{sensor["id"]}').get())
     
@@ -65,13 +65,11 @@ async def add_spot_to_rtdb(spot, db):
 
     ## Confirm ID is not already in RTDB and insert
     if db.reference(f'spots/{spot}').get() is None:
-        print("Confirmed spot doesn't exists")
-        print(f"setting {spot} to {data}")
         try:
             db.reference(f'spots/{spot}').set(data)
         except Exception as e:
             print(e)
-        print("all done!")
+            return (True, {'error': 'Error when adding new spot to RTDB.'})
         logging.info(f'UTIL > Added {spot} to RTDB.')        
         return (_err, db.reference(f'spots/{spot}').get())
     
