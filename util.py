@@ -12,30 +12,24 @@ async def verify_parameters(data):
         object and a status indicator."""
     
     ## Init vars
-    error = False
+    ok = True
     sensor = {}
     
     ## Loop through data keys and compare to requirements
-    reqs = {"id": False, "type": False}
+    reqs = {"id": False, "type": False, "spot": False}
     for k in data:
-        if k in reqs and (data[k] is not None and
-                             data[k] != ""):
-            sensor[k] = data[k]
+        if k in reqs and (data[k] is not None):
             reqs[k] = True
 
     ## Ensure reqs is all True:
     for k in reqs:
         if not reqs[k]:
-            error = True
+            ok = False
             resp = {"error": f"Invalid sensor init -- missing {k}"}
             logging.info(f"UTIL > {resp['error']}")
             break
 
-    ## If all checks pass, return sensor info
-    if not error:
-        resp = sensor
-
-    return error, resp
+    return ok
 
 async def add_sensor_to_rtdb(sensor, db):
     """Adds the Sensor provided to the RTDB and includes its key
@@ -57,30 +51,63 @@ async def add_sensor_to_rtdb(sensor, db):
     return (_err, {'error': f'{sensor["id"]} already exists in RTDB.'})
 
 
-## May not need this function...
-async def update_info(id):
-    """Returns an updated Sensor object with live data from
-        Firebase RTDB."""
 
-    ## TO DO: Create link to RTDB and error-check for valid ID
-    return Sensor()
+async def add_spot_to_rtdb(spot, db):
+    """Adds the Spot provided to the RTDB"""
+
+    _err = False
+
+    data = {
+        'id': spot,
+        'free': 'true',
+        'sensors': {"spot": spot},
+    }
+
+    ## Confirm ID is not already in RTDB and insert
+    if db.reference(f'spots/{spot}').get() is None:
+        print("Confirmed spot doesn't exists")
+        print(f"setting {spot} to {data}")
+        try:
+            db.reference(f'spots/{spot}').set(data)
+        except Exception as e:
+            print(e)
+        print("all done!")
+        logging.info(f'UTIL > Added {spot} to RTDB.')        
+        return (_err, db.reference(f'spots/{spot}').get())
+    
+    ## Otherwise, return an error code and error out
+    _err = True
+    return (_err, {'error': f'{spot} already exists in RTDB.'})
 
 
 ## Authenticate with a given id
 async def auth_id(id, key):
     """Authenticates a given key to the applicable ID provided."""
 
-    ## TO DO: Set up Auth structure and confirm it contains the key
+    ## No key provided, error out:
+    if key is None:
+        return False
+
+
+    ## TODO: Set up Auth structure and confirm it contains the key
 
     ## Temporarily assign this as True
     return True
 
 
-async def exists(id, db):
-    """Returns True if a given ID exists in the provided DB, otherwise False."""
+async def exists(domain="sensors", id=None, db=None):
+    """Returns True if a given sensor ID exists in the provided DB, otherwise False."""
+
+    ## If ID is none, error out:
+    if id is None:
+        return False
+
+    ## If db is none, error out:
+    if db is None:
+        return False
 
     ## Make query to RTDB
-    if db.reference(f'sensors/{id}').get() is None:
+    if db.reference(f'{domain}/{id}').get() is None:
         return False
 
     return True

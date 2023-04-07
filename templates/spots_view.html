@@ -4,16 +4,16 @@
     </head>
 
     <body>
-        <h2>Sensor Data</h2>
+        <h2>Parking Spots View</h2>
         <br />
 
-        <p>Below is a list (with hyperlinks) of all of the sensors currently in the
+        <p>Below is a list (with hyperlinks) of all of the parking spots currently in the
             Real-Time Database.
         </p>
 
         <ul>
-              {% for key, value in sensors.items() %}
-                <li><a href="/data/sensor/view/{{key}}">{{key}}</a></li>
+              {% for key, value in spots.items() %}
+                <li><a href="/data/spot/view/{{key}}">{{key}}</a></li>
               {% endfor %}
         </ul>
 

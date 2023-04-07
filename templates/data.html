@@ -7,16 +7,41 @@
         <h2>Data Layout</h2>
         <br />
 
-        <p>The ' /data ' URL give you access to get and set data on the sensor-level.</p>
-        <p>A brief breakdown of each layout is as follows:</p>
-        <h3> Getting Data </h3>
-        <p>To get data from the API service, simply call a GET request to the respective URL for the sensor you're looking for.</p>
-        <code>GET " eel5632.tylersmith.us/data/YOUR_SENSOR_ID_HERE "</code>
+        <p>The ' /data ' URL give you access to get and set data on different object levels.</p>
+        <p>A brief breakdown of each level is as follows:</p>
+
+
+
+        <h3>Sensor Level</h3>
+        <p>The Sensor level is found at <code>/data/sensor/</code> and is assumed to focus on the 
+        physical sensors themselves. There can be unique fields assigned to the sensor, but at a 
+        minimum, all sensors must contain:<ul>
+            <li>ID</li>
+            <li>Type</li>
+            <li>Spot</li>
+        </ul>
+        </p>
+        <h4> Getting Data </h4>
+        <p>To get sensor data from the API service, simply call a GET request to the respective URL for the sensor you're looking for.</p>
+        <code>GET " eel5632.tylersmith.us/data/sensor/YOUR_SENSOR_ID_HERE "</code>
         <p>This can be done by simply entering the above URL in a browser window. This should
             return a JSON object with relevant sensor information, if the sensor exists.
             Otherwise, it will return a blank JSON object.
         </p>
+        <p>You can also access the sensor data from a browser in a more human-friendly format
+            by using <code>/data/sensor/<b>view</b>/YOUR_SENSOR_ID_HERE</code>.</p>
+        <p> Please note that this returns an HTML webpage and should not be used 
+            for sending data to another service if just the JSON object is required.</p>
 
-        <h3> Setting Data </h3>
+        <h4> Creating / Setting Data </h4>
+        <p>To set data for a given sensor, simply call a POST request that will create a 
+            sensor if one doesn't already exist, and update the values with the provided
+            information in a JSON object. To update a sensor, use:
+        </p>
+        <code>POST " eel5632.tylersmith.us/data/sensor/YOUR_SENSOR_ID_HERE "</code>
+        <p>Be sure to pass up the API Authentication Key in the POST request as a component
+            of the JSON object -- the API will scan the JSON data for the "key" keyword and
+            authenticate with the provided ID and Key to the authentication service.
+        </p>
     </body>
 </html>

@@ -4,18 +4,13 @@
     </head>
 
     <body>
-        <h2>Sensor Data</h2>
+        <h2>Parking Spot View</h2>
         <br />
 
-        <p>Below is a list (with hyperlinks) of all of the sensors currently in the
-            Real-Time Database.
+        <p>Below is the provided spot info.
         </p>
 
-        <ul>
-              {% for key, value in sensors.items() %}
-                <li><a href="/data/sensor/view/{{key}}">{{key}}</a></li>
-              {% endfor %}
-        </ul>
+      
 
         <script>   
             function refresh(){

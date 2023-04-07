@@ -82,27 +82,23 @@ async def data():
 
 ###################################################################
 ## Data View Page Home
-@app.route("/data/view")
-@app.route("/data/view/")
+@app.route("/data/sensor")
+@app.route("/data/sensor/")
+@app.route("/data/sensor/view")
+@app.route("/data/sensor/view/")
 async def sensor_data_view_home():
+    ## Query for list of sensors:
     sensors = db.reference('sensors').get()
     
+    ## Create empty list if none exists
     if sensors is None:
         sensors = {}
-    
-    # try:
-    #     data = {}
-    #     for sensor in sensors:
-    #         data[sensor] = request.path + f'/{sensor}'
-    # except Exception as e:
-    #     logging.warning("APP > SENSOR_DATA_VIEW_HOME | Error" +
-    #         " processing sensors from returned structure.")
 
     return render_template('sensor_data_home.html', sensors=sensors)
 
 ###################################################################
 ## Data View Page (Human-readable version)
-@app.route("/data/view/<id>", methods=["GET"])
+@app.route("/data/sensor/view/<id>", methods=["GET"])
 async def sensor_data_view(id=None):
     """Returns the Human-Readable webpage in HTML for a sensor from
         a given sensor id."""
@@ -117,7 +113,7 @@ async def sensor_data_view(id=None):
 
 
 ## Returns JSON-only object, intended mainly for mobile app.
-@app.route("/data/<id>", methods=["GET", "POST"])
+@app.route("/data/sensor/<id>", methods=["GET", "POST"])
 async def sensor_data(id=None):
     if id is None:
         logging.warning("")
@@ -149,27 +145,27 @@ async def sensor_data(id=None):
         # First, we authenticate
         for key in data:
             if key == "key":
-
                 ## Attempt to create ID (will error out otherwise):
-                if not (await util.exists(id, db)):
+                if not (await util.exists("sensors", id, db)):
+                    ## Confirm all parameters are present:
                     if (await util.verify_parameters(data)):
-                        await util.add_sensor_to_rtdb(data, db)
+                        ## Add sensor to the RTDB:
+                        _err, data = await util.add_sensor_to_rtdb(data, db)
+                        ## Remove auth key from response
+                        del data["key"]
+                        return data
                     else:
                         return {'error': 'Invalid parameters provided in JSON object.'}
 
-                ## Confirm auth
+                ## Confirm authentication
                 if (await util.auth_id(id, data[key])):
-
-                    ## Remove auth key from data:
-                    vals = {}
-                    for i in data:
-                        if i != "key":
-                            vals[i] = data[i]
+                    ## Remove auth key from data
+                    del data["key"]
                         
                     ## Update DB value
-                    db.reference(f'sensors/{id}').set(vals)
-                    vals['updated'] = 'true'
-                    return vals
+                    db.reference(f'sensors/{id}').set(data)
+                    data['updated'] = 'true'
+                    return data
 
         # Read the data at the posts reference (this is a blocking operation)
         return {'error': 'No Authentication key was provided to update the sensor values.'}
@@ -179,8 +175,104 @@ async def sensor_data(id=None):
 
 
 ###################################################################
+## Get and Set Parking Spot for a Sensor
+@app.route("/data/sensor/<id>/spot", methods=["GET", "POST"])
+async def sensor_spot(id=None):
+    ## Error-check for None types
+    if id is None:
+        return {"error": "None-type provided for sensor ID"}
+
+    if request.method == 'GET':
+        ## Confirm sensor exists:
+        if (await util.exists("sensors", id, db)):
+            try:
+                ## Query for spot in sensor object:
+                spot = db.reference(f"sensors/{id}").get()["spot"]
+            except Exception as e:
+                logging.warning("APP > SENSOR_SPOT | Sensor spot key does not exist")
+                return {"error": "Sensor spot key does not exist in RTDB."}
+            
+            ## Return spot:
+            spot = db.reference(f"spots/{spot}").get()
+            if spot is None:
+                spot = {"error": "Spot does not exist or is not configured."}
+            return spot
+
+        ## Sensor does not exist    
+        return {"error": "Sensor id does not exist."}
+
+    # Get values from POST body:
+    elif request.method == 'POST':
+        content_type = request.headers.get('Content-Type')
+        if (content_type == 'application/json'):
+            data = request.get_json()
+        else:
+            try:
+                data = json.loads(request.data)
+            except Exception as e:
+                logging.warning("APP > SENSOR_DATA | Invalid data type " + 
+                    "provided on JSON read.")
+                data = {"error": "Invalid data type provided. Please ensure" + \
+                        "you're setting data type in body to JSON."}
+                return data
+
+        ## Confirm sensor ID exists
+        if not (await util.exists("sensors", id, db)):
+            return {"error": "Sensor ID does not exist."}
+
+        ## Check for Auth Key in obj:
+        if "key" not in data:
+            return {"error": "No auth key provided in JSON object."}
+
+        ## Confirm auth key:
+        if not (await util.auth_id(id, data["key"])):
+            return {"error": "Improper authentication key was provided for given sensor."}
+
+        ## Confirm spot is provided in data:
+        if "spot" not in data:
+            return {"error": "No spot provided in JSON object."}
+       
+        spot = data["spot"]
+        _err = False
+        ## Confirm spot exists, if not make one
+        if not (await util.exists("spots", spot, db)):
+            _err, spot = await util.add_spot_to_rtdb(spot, db)
+        else:
+            spot = db.reference(f"spots/{spot}").get()
+
+        if _err:
+            return {"error": "Error getting spot data. Please confirm it exists in RTDB."}
+        
+        ## Add sensor ID to sensors object in spot
+        spot['sensors'][id] = id
+
+        ## Reference sensor object:
+        sensor = db.reference(f"sensors/{id}").get()
+
+        ## Unlink current spot, if applicable
+        oldSpot = sensor["spot"]
+        if (await util.exists("spots", oldSpot, db)):
+            oldSpotObj = db.reference(f"spots/{oldSpot}").get()
+            del oldSpotObj["sensors"][id]
+            db.reference(f"spots/{oldSpot}").set(oldSpotObj)
+
+        sensor["spot"] = spot["id"] # Set spot id to sensor's spot parameter
+
+        ## remove auth key if exists
+        if "key" in sensor:
+            del sensor["key"]
+
+        ## setting:
+        db.reference(f"sensors/{id}").set(sensor)
+        db.reference(f"spots/{spot['id']}").set(spot)
+        return sensor
+
+
+
+
+###################################################################
 ## Data View Page (Human-readable version)
-@app.route("/init/<id>", methods=["POST"])
+@app.route("/data/sensor/init/<id>", methods=["POST"])
 async def init(id=None):
     """Initialize a new sensor with the service. Must provide an Auth key and
         a unique Sensor ID. All other parameters are not required.
@@ -201,22 +293,53 @@ async def init(id=None):
                 return {}
 
         ## Confirm that values from POST body are valid:
-        _err, s = await util.verify_parameters(data)
-        if _err:
+        _ok = await util.verify_parameters(data)
+        if not _ok:
             ## Error out and return error msg in JSON object
-            return s
+            return {'error': 'Invalid parameters provided.'}
 
         ## Create Sensor object in RTDB and add to keys
-        _err, s = await util.add_sensor_to_rtdb(s, db)
+        _err, s = await util.add_sensor_to_rtdb(data, db)
 
         ## If error occurs, return the error message as a JSON obj
         if _err:
-            logging.info(f"APP > {s['error']}")
+            logging.warning(f"APP > {s['error']}")
             return s
 
         ## Otherwise, return the newly created object
         s["url"] = os.environ.get("FIREBASE_URL")+f"sensors/{s['id']}"
         return s
+
+
+
+###################################################################
+## Spot Home View Page (Human-readable version)
+@app.route("/data/spot")
+@app.route("/data/spot/")
+@app.route("/data/spot/view")
+@app.route("/data/spot/view/")
+async def spots_view():
+    """Returns a comprehensive list of all spots in the RTDB."""
+
+    spots = db.reference("spots").get()
+
+    return render_template("spots_view.html", spots=spots)
+
+
+###################################################################
+## Spot View Page (Human-readable version)
+@app.route("/data/spot/view/<id>")
+async def spot_view(id=None):
+    """Returns human-readable version of a given spot's information"""
+    if id is None:
+        spot = {}
+
+    if (await util.exists("spots", id, db)):    
+        spot = db.reference(f"/spots/{id}").get()
+    else:
+        spot = {}
+
+    return render_template('spot_view.html', spot=spot)
 
 
 if __name__ == "__main__":
