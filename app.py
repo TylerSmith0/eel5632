@@ -50,11 +50,11 @@ async def startup():
 
     logging.info("Starting up app...")
 
-    with sqlite3.connect("database.db") as con:
-        cur = con.cursor()
-        with open('schema.sql') as f:
-            cur.executescript(f.read())
-            logging.info("Returning from SQL Schema setup.")
+    # with sqlite3.connect("database.db") as con:
+    #     cur = con.cursor()
+    #     with open('schema.sql') as f:
+    #         cur.executescript(f.read())
+    #         logging.info("Returning from SQL Schema setup.")
 
     
 ###################################################################
