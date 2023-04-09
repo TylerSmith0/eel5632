@@ -131,17 +131,26 @@ async def sensor_data(id=None):
 
     elif request.method == "POST":
         # Get values from POST body:
-        content_type = request.headers.get('Content-Type')
-        if (content_type == 'application/json'):
+        if request.is_json:# is None:
             data = request.get_json()
         else:
             try:
-                data = json.loads(request.data)
+                data = request.get_data()
+                if type(data) is bytes:
+                    data = data.decode('utf8')
+                if "&" in data:
+                    keys = data.split("&")
+                    data = {}
+                    for k in keys:
+                        d = k.split("=")
+                        data[d[0]] = d[1]
+                else:
+                    data = eval(data)
             except Exception as e:
                 logging.warning("APP > SENSOR_DATA | Invalid data type " + 
                     "provided on JSON read.")
-                data = {"error": "Invalid data type provided. Please ensure' + \
-                        you're setting data type in body to JSON."}
+                data = {"error": "Invalid data type provided. Please ensure " + \
+                        "you're setting data type in body to JSON."}
                 return data
         
         # First, we authenticate

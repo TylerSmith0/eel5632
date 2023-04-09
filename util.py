@@ -39,6 +39,8 @@ async def add_sensor_to_rtdb(sensor, db):
 
     ## Confirm ID is not already in RTDB and insert
     if db.reference(f'sensors/{sensor["id"]}').get() is None:
+        if "key" in sensor:
+            del sensor["key"]
         db.reference(f'sensors/{sensor["id"]}').set(sensor)
         logging.info(f'UTIL > Added {sensor["id"]} to RTDB.')
 
