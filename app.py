@@ -354,6 +354,63 @@ async def spots_view():
     return render_template("spots_view.html", spots=spots)
 
 
+
+###################################################################
+## Spot JSON Object Return
+@app.route("/data/spot/<id>")
+async def spot_obj(id=None):
+    """Returns JSON object of spot information."""
+    if id is None:
+        spot = {}
+
+    if (await util.exists("spots", id, db)):    
+        spot = db.reference(f"/spots/{id}").get()
+    else:
+        spot = {}
+
+    return spot
+
+
+
+###################################################################
+## Spot JSON Object Return
+@app.route("/data/spot/<id>/free")
+async def spot_free(id=None):
+    """Returns True or False if spot is available."""
+    if id is None:
+        free = False
+
+    if (await util.exists("spots", id, db)):
+        try:  
+            spot = db.reference(f"/spots/{id}").get()
+            free = spot["free"]
+        except Exception as e:
+            logging.warn(f"{e} | APP > SPOT_OBJ | Error getting Spot object from Firebase.")
+            free = False
+    else:
+        free = False
+
+    return free
+
+
+
+###################################################################
+## Spots JSON List Return
+@app.route("/data/spots")
+@app.route("/data/spots/")
+async def spots_avail():
+    """Returns True or False if spot is available."""
+
+    try:  
+        spots = db.reference(f"/spots").get()
+    except Exception as e:
+        logging.warn(f"{e} | APP > SPOT_OBJ | Error getting Spots list from Firebase.")
+        spots = {}
+
+    return spots
+
+
+
 ###################################################################
 ## Spot View Page (Human-readable version)
 @app.route("/data/spot/view/<id>")
@@ -370,5 +427,81 @@ async def spot_view(id=None):
     return render_template('spot_view.html', spot=spot)
 
 
+
+##################################################
+## Plates list
+##
+@app.route("/data/plates")
+@app.route("/data/plates/")
+async def plates():
+    """Returns a list of the plates that are currently in the RTDB."""
+
+    try:
+        plates = db.reference(f"/plates").get()
+    except Exception as e:
+        logging.warn(f"{e} | APP > PLATES | Error getting Plates list from Firebase.")
+        plates = {}
+    return plates
+
+
+
+##################################################
+## Plates list
+##
+@app.route("/data/plates/<id>", methods=["GET", "POST", "DELETE"])
+async def plates_getset(id=None):
+    """Adds or removes a plate to/from the RTDB."""
+    if id is None:
+        return {"error": "None id type provided."}
+
+    if request.method == "POST":
+
+        # Get values from POST body:
+        if request.is_json:# is None:
+            data = request.get_json()
+        else:
+            try:
+                data = request.get_data()
+                if type(data) is bytes:
+                    data = data.decode('utf8')
+                if "&" in data:
+                    keys = data.split("&")
+                    data = {}
+                    for k in keys:
+                        d = k.split("=")
+                        data[d[0]] = d[1]
+                else:
+                    data = eval(data)
+            except Exception as e:
+                logging.warning("APP > SENSOR_DATA | Invalid data type " + 
+                    "provided on JSON read.")
+                data = {"error": "Invalid data type provided. Please ensure " + \
+                        "you're setting data type in body to JSON."}
+                return data
+
+        ## Adding a plate:
+        try:
+            if (await util.exists("plates", id, db)):
+                return {"error": "Plate already exists in RTDB."}
+            
+            plates = db.reference(f"/plates/{id}").set(data)
+        except Exception as e:
+            logging.warn(f"{e} | APP > PLATES | Error getting Plates list from Firebase.")
+            plates = {}
+        return data
+
+    elif request.method == "DELETE":
+        try:
+            if (await util.exists("plates", id, db)):
+                db.reference(f"/plates/{id}").delete()
+                return {"status": f"{id} deleted from RTDB."}
+        except Exception as e:
+            logging.warn(f"{e} | APP > PLATES | Error deleting {id} from RTDB.")
+        return {"error": "An unspecified error occurred while trying to delete a license plate."}
+
+    return {"error": "Unspecified request type -- Plates only takes POST and DELETE requests."}
+
+
+    
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
