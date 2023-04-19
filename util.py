@@ -44,6 +44,11 @@ async def add_sensor_to_rtdb(sensor, db):
         db.reference(f'sensors/{sensor["id"]}').set(sensor)
         logging.info(f'UTIL > Added {sensor["id"]} to RTDB.')
 
+        ## TODO: Update parking spot, if existing, to include this sensor
+        if "spot" in sensor:
+            print("updating sensor spot")
+            await update_sensor_spot(sensor, sensor["id"], db)
+
         ## TODO: Add Auth key to data structure
         
         return (_err, db.reference(f'sensors/{sensor["id"]}').get())
@@ -111,3 +116,66 @@ async def exists(domain="sensors", id=None, db=None):
         return False
 
     return True
+
+
+async def update_sensor_spot(data, id, db):
+    print("in func")
+    ## Confirm sensor ID exists
+    if not (await exists("sensors", id, db)):
+        return {"error": "Sensor ID does not exist."}
+    print("past 1")
+    ## Check for Auth Key in obj:
+    if "key" not in data:
+        return {"error": "No auth key provided in JSON object."}
+    print("past 2")
+    ## Confirm auth key:
+    if not (await auth_id(id, data["key"])):
+        return {"error": "Improper authentication key was provided for given sensor."}
+    print("past 3")
+    ## Confirm spot is provided in data:
+    if "spot" not in data:
+        return {"error": "No spot provided in JSON object."}
+    print("past 4")
+    spot = data["spot"]
+    _err = False
+    ## Confirm spot exists, if not make one
+    if not (await exists("spots", spot, db)):
+        print("Adding to rtdb")
+        _err, spot = await add_spot_to_rtdb(spot, db)
+    else:
+        print("spot exists")
+        spot = db.reference(f"spots/{spot}").get()
+        print(spot)
+
+    if _err:
+        return {"error": "Error getting spot data. Please confirm it exists in RTDB."}
+    print("past 5")
+    ## Add sensor ID to sensors object in spot
+    spot['sensors'][id] = id
+    print(spot)
+    ## Reference sensor object:
+    sensor = db.reference(f"sensors/{id}").get()
+    print(sensor)
+    ## Unlink current spot, if applicable
+    oldSpot = sensor["spot"]
+    print(oldSpot)
+    if (await exists("spots", oldSpot, db)):
+        print("old spot exists, ulinking:")
+        oldSpotObj = db.reference(f"spots/{oldSpot}").get()
+        del oldSpotObj["sensors"][id]
+        db.reference(f"spots/{oldSpot}").set(oldSpotObj)
+
+    sensor["spot"] = spot["id"] # Set spot id to sensor's spot parameter
+    print(sensor)
+    ## remove auth key if exists
+    if "key" in sensor:
+        print("deleting key")
+        del sensor["key"]
+
+    ## setting:
+    print("setting these puppies")
+    print(sensor)
+    print(spot)
+    db.reference(f"sensors/{id}").set(sensor)
+    db.reference(f"spots/{spot['id']}").set(spot)
+    return sensor

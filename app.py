@@ -7,7 +7,7 @@ import logging
 import urllib.parse
 import urllib.request
 from dotenv import load_dotenv
-
+from apscheduler.schedulers.background import BackgroundScheduler
 ## Flask imports
 from flask import Flask, render_template, request, json
 
@@ -39,6 +39,16 @@ fb = firebase_admin.initialize_app(cred, {
 })
 
 
+## Occupancy Values for different types of sensors:
+
+occ = {
+    "ultrasonic": ["True", "true", 1, True],
+     "us": ["True", "true", 1, True], 
+     "usonic": ["True", "true", 1, True], 
+     "US": ["True", "true", 1, True],
+}
+
+
 ###################################################################
 ## Initialization routine run on startup 
 @app.before_first_request
@@ -50,12 +60,78 @@ async def startup():
 
     logging.info("Starting up app...")
 
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=monitor_spots, trigger="interval", seconds=10)
+    scheduler.start()
     # with sqlite3.connect("database.db") as con:
     #     cur = con.cursor()
     #     with open('schema.sql') as f:
     #         cur.executescript(f.read())
     #         logging.info("Returning from SQL Schema setup.")
 
+
+
+def monitor_spots():
+    """Iterates through every parking spot in the RTDB and updates the spot's free value
+        based on the status of its dependent sensors."""
+
+    try:
+        spots = db.reference(f"/spots").get()
+        print(spots)
+        for spot in spots:
+            print(f"Checking {spot}")
+            flag = False
+            ## Check all of the sensor values
+            for sensor in spots[spot]["sensors"]:
+                print(f"Sensor is {sensor}")
+                ## Skip if it's referring to itself
+                if sensor == "spot":
+                    continue
+
+                ## Check if sensor value matches the global OCCUPIED state
+                try:
+                    s = db.reference(f"/sensors/{sensor}").get()
+                    # print(f"Returned sensors is {s}")
+                    # print(occ)
+                    if s["type"] in occ:
+                        occ_state = occ[s["type"]]
+                    else:
+                        # print("not in occ")
+                        continue
+                except Exception as e:
+                    logging.info(f"{e} | APP > MONITOR_SPOTS | Invalid sensor type for occupancy array.")
+                    ## sensor["free"] = False  ## Don't do anything!
+                    continue
+
+                # print(spots[spot]["sensors"][sensor]["value"])
+                # print(occ_state)
+                # print(s["value"])
+                # print(occ_state)
+                if s["value"] in occ_state:
+                    ## Change spot to occupied and continue to next spot
+                    spots[spot]["free"] = False
+                    # print("Updating to FALSE")
+                    try:
+                        db.reference(f"/spots/{spot}").set(spots[spot])
+                        flag = True
+                    except Exception as e:
+                        logging.error(f"{e} | APP > MONITOR_SPOTS | Unable to set parking spot to False value.")
+                        ## sensor["free"] = False  ## Don't do anything!
+                    break
+            
+            ## If we get here, we can make it true! (If it's not already)
+            if not flag and not spots[spot]["free"]:
+                ## Change spot to UNoccupied
+                spots[spot]["free"] = True
+                try:
+                    db.reference(f"/spots/{spots[spot]['id']}").set(spots[spot])
+                except Exception as e:
+                    logging.error(f"{e} | APP > MONITOR_SPOTS | Unable to set parking spot to False value.")
+
+
+
+    except Exception as e:
+        logging.error(f"{e} | APP > MONITOR_SPOTS | Unable to run scheduled function.")
     
 ###################################################################
 ## Home Page view
@@ -162,7 +238,8 @@ async def sensor_data(id=None):
                         ## Add sensor to the RTDB:
                         _err, data = await util.add_sensor_to_rtdb(data, db)
                         ## Remove auth key from response
-                        del data["key"]
+                        if "key" in data:
+                            del data["key"]
                         return data
                     else:
                         return {'error': 'Invalid parameters provided in JSON object.'}
@@ -172,16 +249,17 @@ async def sensor_data(id=None):
                     
                     ## Get current item:
                     currData = db.reference(f"sensors/{id}").get()
-
+                    
                     ## Compare current spot to new spot, if exists:
                     if "spot" in data:
                         if data["spot"] != currData["spot"]:
-                            resp = await update_sensor_spot(data, id, db)
+                            resp = await util.update_sensor_spot(data, id, db)
                             if "error" in resp:
                                 return resp["error"]
 
                     ## Remove auth key from data
-                    del data["key"]
+                    if "key" in data:
+                        del data["key"]
 
                     ## Add to existing object, appending whatever is missing:
                     for i in currData:
@@ -242,60 +320,10 @@ async def sensor_spot(id=None):
                         "you're setting data type in body to JSON."}
                 return data
         
-        return await update_sensor_spot(data, id, db)
+        return await util.update_sensor_spot(data, id, db)
 
 
-async def update_sensor_spot(data, id, db):
-    ## Confirm sensor ID exists
-    if not (await util.exists("sensors", id, db)):
-        return {"error": "Sensor ID does not exist."}
 
-    ## Check for Auth Key in obj:
-    if "key" not in data:
-        return {"error": "No auth key provided in JSON object."}
-
-    ## Confirm auth key:
-    if not (await util.auth_id(id, data["key"])):
-        return {"error": "Improper authentication key was provided for given sensor."}
-
-    ## Confirm spot is provided in data:
-    if "spot" not in data:
-        return {"error": "No spot provided in JSON object."}
-    
-    spot = data["spot"]
-    _err = False
-    ## Confirm spot exists, if not make one
-    if not (await util.exists("spots", spot, db)):
-        _err, spot = await util.add_spot_to_rtdb(spot, db)
-    else:
-        spot = db.reference(f"spots/{spot}").get()
-
-    if _err:
-        return {"error": "Error getting spot data. Please confirm it exists in RTDB."}
-    
-    ## Add sensor ID to sensors object in spot
-    spot['sensors'][id] = id
-
-    ## Reference sensor object:
-    sensor = db.reference(f"sensors/{id}").get()
-
-    ## Unlink current spot, if applicable
-    oldSpot = sensor["spot"]
-    if (await util.exists("spots", oldSpot, db)):
-        oldSpotObj = db.reference(f"spots/{oldSpot}").get()
-        del oldSpotObj["sensors"][id]
-        db.reference(f"spots/{oldSpot}").set(oldSpotObj)
-
-    sensor["spot"] = spot["id"] # Set spot id to sensor's spot parameter
-
-    ## remove auth key if exists
-    if "key" in sensor:
-        del sensor["key"]
-
-    ## setting:
-    db.reference(f"sensors/{id}").set(sensor)
-    db.reference(f"spots/{spot['id']}").set(spot)
-    return sensor
 
 
 ###################################################################
@@ -502,6 +530,6 @@ async def plates_getset(id=None):
     return {"error": "Unspecified request type -- Plates only takes POST and DELETE requests."}
 
 
-    
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
