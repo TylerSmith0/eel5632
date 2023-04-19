@@ -77,13 +77,13 @@ def monitor_spots():
 
     try:
         spots = db.reference(f"/spots").get()
-        print(spots)
+        # print(spots)
         for spot in spots:
-            print(f"Checking {spot}")
+            # print(f"Checking {spot}")
             flag = False
             ## Check all of the sensor values
             for sensor in spots[spot]["sensors"]:
-                print(f"Sensor is {sensor}")
+                # print(f"Sensor is {sensor}")
                 ## Skip if it's referring to itself
                 if sensor == "spot":
                     continue
@@ -236,6 +236,8 @@ async def sensor_data(id=None):
                     ## Confirm all parameters are present:
                     if (await util.verify_parameters(data)):
                         ## Add sensor to the RTDB:
+                        # print("carrie underwood")
+                        # print(data)
                         _err, data = await util.add_sensor_to_rtdb(data, db)
                         ## Remove auth key from response
                         if "key" in data:
