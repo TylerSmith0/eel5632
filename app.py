@@ -46,6 +46,9 @@ occ = {
      "us": ["True", "true", 1, True], 
      "usonic": ["True", "true", 1, True], 
      "US": ["True", "true", 1, True],
+     "lidar": ["True", "true", 1, True],
+     "Lidar": ["True", "true", 1, True],
+     "LIDAR": ["True", "true", 1, True],
 }
 
 
