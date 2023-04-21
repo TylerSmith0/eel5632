@@ -9,7 +9,11 @@
 
         <p>Below is the provided spot info.
         </p>
-
+        <ul>
+        {% for key, value in spot.items() %}
+                <li>{{key}}: {{value}}</li>
+        {% endfor %}
+        </ul>
       
 
         <script>   

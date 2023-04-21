@@ -235,6 +235,9 @@ async def sensor_data(id=None):
         for key in data:
             if key == "key":
                 ## Attempt to create ID (will error out otherwise):
+                if "id" in data:
+                    id = data["id"]
+                # print(await util.exists("sensors", id, db))
                 if not (await util.exists("sensors", id, db)):
                     ## Confirm all parameters are present:
                     if (await util.verify_parameters(data)):
